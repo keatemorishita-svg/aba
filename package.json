@@ -1,0 +1,19 @@
+{
+  "name": "obsidian-aba",
+  "version": "1.0.0",
+  "description": "Follow builders, not influencers — AI Builders Digest for Obsidian",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "tsc -noEmit -skipLibCheck"
+  },
+  "keywords": ["obsidian", "plugin", "ai", "digest", "builders"],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.24.0",
+    "obsidian": "^1.5.0",
+    "typescript": "^5.4.0"
+  }
+}

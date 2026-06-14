@@ -1,0 +1,10 @@
+{
+  "id": "aba",
+  "name": "AI Builder OS",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "Follow builders, not influencers — 将 AI 行业顶尖 Builder 的每日动态转化为你的 Obsidian 知识网络，通过六位 Builder 的视角理解 AI 行业。",
+  "author": "",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

@@ -1,0 +1,10 @@
+{
+  "_comment": "Builder OS 配置。复制为 config.json 后填入你的设置。",
+  "vaultPath": "/path/to/your/ObsidianVault",
+  "language": "zh",
+  "outputDir": "AI Builder OS",
+  "llm": {
+    "provider": "deepseek",
+    "model": "deepseek-chat"
+  }
+}
