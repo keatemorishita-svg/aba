@@ -206,11 +206,16 @@ var FEED_URLS = {
   podcasts: "https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-podcasts.json",
   blogs: "https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-blogs.json"
 };
+var RSS_FEEDS = [
+  { url: "https://openai.com/blog/rss.xml", source: "OpenAI" },
+  { url: "https://machinelearning.apple.com/rss.xml", source: "Apple ML" }
+];
 async function fetchFeeds() {
-  const [feedX, feedPodcasts, feedBlogs] = await Promise.all([
+  const [feedX, feedPodcasts, feedBlogs, rssItems] = await Promise.all([
     fetchJSON(FEED_URLS.x),
     fetchJSON(FEED_URLS.podcasts),
-    fetchJSON(FEED_URLS.blogs)
+    fetchJSON(FEED_URLS.blogs),
+    fetchRSSFeeds()
   ]);
   const xBuilders = feedX?.x || [];
   const podcasts = feedPodcasts?.podcasts || [];
@@ -219,10 +224,12 @@ async function fetchFeeds() {
     x: xBuilders,
     podcasts,
     blogs,
+    rss: rssItems,
     stats: {
       totalTweets: xBuilders.reduce((sum, b) => sum + (b.tweets?.length || 0), 0),
       podcastEpisodes: podcasts.length,
-      blogPosts: blogs.length
+      blogPosts: blogs.length,
+      rssItems: rssItems.length
     }
   };
 }
@@ -278,7 +285,82 @@ function buildContentSummary(data) {
       );
     }
   }
+  if (data.rss && data.rss.length > 0) {
+    parts.push("## \u{1F3E2} Official Company News (\u5B98\u65B9\u516C\u53F8\u516C\u544A)", "");
+    const bySource = /* @__PURE__ */ new Map();
+    for (const item of data.rss) {
+      const list = bySource.get(item.source) || [];
+      list.push(item);
+      bySource.set(item.source, list);
+    }
+    for (const [source, items] of bySource) {
+      parts.push(`### ${source}`, "");
+      for (const item of items) {
+        parts.push(
+          `- **${item.title}**`,
+          `  URL: ${item.url}`,
+          `  Published: ${item.publishedAt?.slice(0, 16) || "?"}`,
+          item.description ? `  Summary: ${item.description.slice(0, 300)}` : "",
+          ""
+        );
+      }
+    }
+  }
   return parts.join("\n");
+}
+async function fetchRSSFeeds() {
+  const results = [];
+  for (const feed of RSS_FEEDS) {
+    try {
+      const items = await fetchRSS(feed.url, feed.source);
+      results.push(...items);
+    } catch (err) {
+      console.warn(`[ABA] RSS fetch failed for ${feed.source}:`, err.message);
+    }
+  }
+  return results;
+}
+async function fetchRSS(url, source) {
+  const response = await (0, import_obsidian2.requestUrl)({ url, method: "GET" });
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  const xml = response.text;
+  const items = [];
+  const itemRegex = /<(item|entry)>([\s\S]*?)<\/(item|entry)>/gi;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[2];
+    const title = extractTag(block, "title");
+    const link = extractLink(block);
+    const pubDate = extractTag(block, "pubDate") || extractTag(block, "published") || extractTag(block, "updated");
+    const description = extractTag(block, "description") || extractTag(block, "summary") || extractTag(block, "content");
+    if (title && link) {
+      items.push({
+        title: decodeXML(title).slice(0, 200),
+        url: link,
+        publishedAt: pubDate ? decodeXML(pubDate).slice(0, 25) : "",
+        description: description ? decodeXML(description).replace(/<[^>]*>/g, "").slice(0, 500) : "",
+        source
+      });
+    }
+    if (items.filter((i) => i.source === source).length >= 5) break;
+  }
+  return items;
+}
+function extractTag(block, tag) {
+  const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i");
+  const match = block.match(regex);
+  return match ? match[1].trim() : "";
+}
+function extractLink(block) {
+  let match = block.match(/<link[^>]*href="([^"]*)"[^>]*\/?>/i);
+  if (match) return match[1];
+  match = block.match(/<link>([^<]*)<\/link>/i);
+  return match ? match[1].trim() : "";
+}
+function decodeXML(str) {
+  return str.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 function getLanguageInstruction(lang) {
   switch (lang) {
@@ -490,6 +572,22 @@ function buildFactsSection(data) {
       );
     }
   }
+  if (data.rss && data.rss.length > 0) {
+    lines.push("### \u{1F3E2} \u5B98\u65B9\u516C\u53F8\u516C\u544A", "");
+    const bySource = /* @__PURE__ */ new Map();
+    for (const item of data.rss) {
+      const list = bySource.get(item.source) || [];
+      list.push(item);
+      bySource.set(item.source, list);
+    }
+    for (const [source, items] of bySource) {
+      lines.push(`**${source}** (${items.length} \u6761)`, "");
+      for (const item of items.slice(0, 3)) {
+        lines.push(`- [${item.title}](${item.url})`);
+      }
+      lines.push("");
+    }
+  }
   if (data.blogs.length > 0) {
     lines.push("### \u{1F4DD} \u535A\u5BA2", "");
     for (const blog of data.blogs) {
@@ -548,6 +646,26 @@ function generateFeed(data, date) {
         `- **\u8F6C\u5F55\u957F\u5EA6**: ~${Math.round((ep.transcript || "").length / 1e3)}k \u5B57\u7B26`,
         ""
       );
+    }
+  }
+  if (data.rss && data.rss.length > 0) {
+    lines.push("---", "", "## \u{1F3E2} \u5B98\u65B9\u516C\u53F8\u516C\u544A", "");
+    const bySource = /* @__PURE__ */ new Map();
+    for (const item of data.rss) {
+      const list = bySource.get(item.source) || [];
+      list.push(item);
+      bySource.set(item.source, list);
+    }
+    for (const [source, items] of bySource) {
+      lines.push(`### ${source}`, "");
+      for (const item of items) {
+        lines.push(
+          `- **${item.title}**`,
+          `  - [\u539F\u6587](${item.url})`,
+          item.description ? `  - ${item.description.slice(0, 200)}` : "",
+          ""
+        );
+      }
     }
   }
   if (data.blogs.length > 0) {
@@ -803,7 +921,7 @@ async function runGeneration(settings) {
     "",
     "## \u{1F4E1} \u4ECA\u65E5\u7D20\u6750",
     "",
-    `> \u5171 ${data.stats.totalTweets} \u6761\u63A8\u6587 \xB7 ${data.stats.podcastEpisodes} \u671F\u64AD\u5BA2 \xB7 ${data.stats.blogPosts} \u7BC7\u535A\u5BA2`,
+    `> \u5171 ${data.stats.totalTweets} \u6761\u63A8\u6587 \xB7 ${data.stats.podcastEpisodes} \u671F\u64AD\u5BA2 \xB7 ${data.stats.rssItems || 0} \u6761\u5B98\u65B9\u516C\u544A \xB7 ${data.stats.blogPosts} \u7BC7\u535A\u5BA2`,
     `> \u8BE6\u7EC6\u6458\u8981\uFF1A[[${base}/Digest/${date}|${date} Digest]] \xB7 \u539F\u59CB\u6570\u636E\uFF1A[[${base}/Feed/${date}|Feed]]`,
     "",
     factsSection

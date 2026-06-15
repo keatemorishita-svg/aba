@@ -44,6 +44,12 @@ const FEEDS = {
   blogs:    'https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-blogs.json',
 };
 
+// Official company RSS feeds (老板视角 — 公司官方公告)
+const RSS_FEEDS = [
+  { url: 'https://openai.com/blog/rss.xml',          source: 'OpenAI' },
+  { url: 'https://machinelearning.apple.com/rss.xml', source: 'Apple ML' },
+];
+
 // -- CLI arg parsing ---------------------------------------------------------
 
 function parseArgs() {
@@ -89,6 +95,64 @@ async function fetchJSON(url, opts) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
   return res.json();
+}
+
+async function fetchRSSFeeds(opts) {
+  const results = [];
+  for (const feed of RSS_FEEDS) {
+    try {
+      const items = await fetchRSS(feed.url, feed.source, opts);
+      results.push(...items);
+    } catch (err) {
+      console.warn(`[ABA] RSS fetch failed for ${feed.source}:`, err.message);
+    }
+  }
+  return results;
+}
+
+async function fetchRSS(url, source, opts) {
+  verbose(`Fetching RSS: ${source}`, opts);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const xml = await res.text();
+  const items = [];
+  const itemRegex = /<(item|entry)>([\s\S]*?)<\/(item|entry)>/gi;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[2];
+    const title = extractTag(block, 'title');
+    const link = extractLink(block);
+    const pubDate = extractTag(block, 'pubDate') || extractTag(block, 'published') || extractTag(block, 'updated');
+    const description = extractTag(block, 'description') || extractTag(block, 'summary') || extractTag(block, 'content');
+    if (title && link) {
+      items.push({
+        title: decodeXML(title).slice(0, 200),
+        url: link,
+        publishedAt: pubDate ? decodeXML(pubDate).slice(0, 25) : '',
+        description: description ? decodeXML(description).replace(/<[^>]*>/g, '').slice(0, 500) : '',
+        source,
+      });
+    }
+    if (items.filter(i => i.source === source).length >= 5) break;
+  }
+  return items;
+}
+
+function extractTag(block, tag) {
+  const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i');
+  const match = block.match(regex);
+  return match ? match[1].trim() : '';
+}
+
+function extractLink(block) {
+  let match = block.match(/<link[^>]*href="([^"]*)"[^>]*\/?>/i);
+  if (match) return match[1];
+  match = block.match(/<link>([^<]*)<\/link>/i);
+  return match ? match[1].trim() : '';
+}
+
+function decodeXML(str) {
+  return str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 
 async function loadPrompt(name) {
@@ -850,14 +914,15 @@ async function main() {
     await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
   }
 
-  // 1. Fetch central feeds
-  log('Phase 1: Fetching central feeds...');
-  let feedX, feedPodcasts, feedBlogs;
+  // 1. Fetch central feeds + RSS
+  log('Phase 1: Fetching central feeds + official company news...');
+  let feedX, feedPodcasts, feedBlogs, rssItems;
   try {
-    [feedX, feedPodcasts, feedBlogs] = await Promise.all([
+    [feedX, feedPodcasts, feedBlogs, rssItems] = await Promise.all([
       fetchJSON(FEEDS.x, opts),
       fetchJSON(FEEDS.podcasts, opts),
       fetchJSON(FEEDS.blogs, opts),
+      fetchRSSFeeds(opts),
     ]);
   } catch (err) {
     console.error('Fatal: Could not fetch feeds:', err.message);
@@ -869,16 +934,18 @@ async function main() {
     x: feedX?.x || [],
     podcasts: feedPodcasts?.podcasts || [],
     blogs: feedBlogs?.blogs || [],
+    rss: rssItems || [],
     stats: {
       totalTweets: (feedX?.x || []).reduce((s, b) => s + (b.tweets?.length || 0), 0),
       podcastEpisodes: (feedPodcasts?.podcasts || []).length,
       blogPosts: (feedBlogs?.blogs || []).length,
+      rssItems: (rssItems || []).length,
     },
   };
 
-  log(`  Fetched: ${data.stats.totalTweets} tweets, ${data.stats.podcastEpisodes} podcasts, ${data.stats.blogPosts} blogs`);
+  log(`  Fetched: ${data.stats.totalTweets} tweets, ${data.stats.podcastEpisodes} podcasts, ${data.stats.rssItems} official news, ${data.stats.blogPosts} blogs`);
 
-  if (data.stats.totalTweets === 0 && data.stats.podcastEpisodes === 0 && data.stats.blogPosts === 0) {
+  if (data.stats.totalTweets === 0 && data.stats.podcastEpisodes === 0 && data.stats.rssItems === 0 && data.stats.blogPosts === 0) {
     log('No new content today. Nothing to generate.');
     process.exit(0);
   }

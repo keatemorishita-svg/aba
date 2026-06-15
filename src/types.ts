@@ -59,15 +59,26 @@ export interface FeedBlog {
   publishedAt?: string;
 }
 
+/** A single RSS item from an official company blog */
+export interface RSSItem {
+  title: string;
+  url: string;
+  publishedAt: string;
+  description: string;
+  source: string;       // Company name: "OpenAI" / "Apple ML" etc.
+}
+
 /** Aggregated feed data */
 export interface FeedData {
   x: FeedBuilder[];
   podcasts: FeedPodcast[];
   blogs: FeedBlog[];
+  rss: RSSItem[];          // Official company news (RSS)
   stats: {
     totalTweets: number;
     podcastEpisodes: number;
     blogPosts: number;
+    rssItems: number;
   };
 }
 

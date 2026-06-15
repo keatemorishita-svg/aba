@@ -126,6 +126,23 @@ function buildFactsSection(data: FeedData): string {
     }
   }
 
+  if (data.rss && data.rss.length > 0) {
+    lines.push('### 🏢 官方公司公告', '');
+    const bySource = new Map<string, any[]>();
+    for (const item of data.rss) {
+      const list = bySource.get(item.source) || [];
+      list.push(item);
+      bySource.set(item.source, list);
+    }
+    for (const [source, items] of bySource) {
+      lines.push(`**${source}** (${items.length} 条)`, '');
+      for (const item of items.slice(0, 3)) {
+        lines.push(`- [${item.title}](${item.url})`);
+      }
+      lines.push('');
+    }
+  }
+
   if (data.blogs.length > 0) {
     lines.push('### 📝 博客', '');
     for (const blog of data.blogs) {
@@ -190,6 +207,27 @@ function generateFeed(data: FeedData, date: string): string {
         `- **转录长度**: ~${Math.round((ep.transcript || '').length / 1000)}k 字符`,
         '',
       );
+    }
+  }
+
+  if (data.rss && data.rss.length > 0) {
+    lines.push('---', '', '## 🏢 官方公司公告', '');
+    const bySource = new Map<string, any[]>();
+    for (const item of data.rss) {
+      const list = bySource.get(item.source) || [];
+      list.push(item);
+      bySource.set(item.source, list);
+    }
+    for (const [source, items] of bySource) {
+      lines.push(`### ${source}`, '');
+      for (const item of items) {
+        lines.push(
+          `- **${item.title}**`,
+          `  - [原文](${item.url})`,
+          item.description ? `  - ${item.description.slice(0, 200)}` : '',
+          '',
+        );
+      }
     }
   }
 
@@ -514,7 +552,7 @@ export async function runGeneration(settings: BuilderOSSettings): Promise<Genera
     '',
     '## 📡 今日素材',
     '',
-    `> 共 ${data.stats.totalTweets} 条推文 · ${data.stats.podcastEpisodes} 期播客 · ${data.stats.blogPosts} 篇博客`,
+    `> 共 ${data.stats.totalTweets} 条推文 · ${data.stats.podcastEpisodes} 期播客 · ${data.stats.rssItems || 0} 条官方公告 · ${data.stats.blogPosts} 篇博客`,
     `> 详细摘要：[[${base}/Digest/${date}|${date} Digest]] · 原始数据：[[${base}/Feed/${date}|Feed]]`,
     '',
     factsSection,
