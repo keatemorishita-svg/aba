@@ -193,15 +193,17 @@ function extractTag(block: string, tag: string): string {
 }
 
 function extractLink(block: string): string {
-  // RSS: <link>url</link> or Atom: <link href="url"/>
-  let match = block.match(/<link[^>]*href="([^"]*)"[^>]*\/?>/i);
-  if (match) return match[1];
-  match = block.match(/<link>([^<]*)<\/link>/i);
+  // RSS standard <link>url</link> — try FIRST (Atom <link href> would steal it)
+  let match = block.match(/<link>([^<]*)<\/link>/i);
+  if (match) return match[1].trim();
+  // Atom <link href="url"/>
+  match = block.match(/<link[^>]*href="([^"]*)"[^>]*\/?>/i);
   return match ? match[1].trim() : '';
 }
 
 function decodeXML(str: string): string {
   return str
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')  // strip CDATA wrappers
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')

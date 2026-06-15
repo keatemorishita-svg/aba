@@ -145,14 +145,20 @@ function extractTag(block, tag) {
 }
 
 function extractLink(block) {
-  let match = block.match(/<link[^>]*href="([^"]*)"[^>]*\/?>/i);
-  if (match) return match[1];
-  match = block.match(/<link>([^<]*)<\/link>/i);
+  let match = block.match(/<link>([^<]*)<\/link>/i);
+  if (match) return match[1].trim();
+  match = block.match(/<link[^>]*href="([^"]*)"[^>]*\/?>/i);
   return match ? match[1].trim() : '';
 }
 
 function decodeXML(str) {
-  return str.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return str
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 async function loadPrompt(name) {
